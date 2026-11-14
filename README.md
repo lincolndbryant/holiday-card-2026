@@ -1,5 +1,3 @@
-# Penrose Snowflake card
-
 ![Penrose snowflake card, bold preset](out/penrose-snowflake-5x7-bold-preview.svg)
 
 A laser-cut 5 × 7 in holiday card front: a five-fold snowflake (a symmetry real
