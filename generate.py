@@ -13,6 +13,7 @@ Requires: shapely  (pip install shapely)
 All units are millimetres.
 """
 import cmath
+import json
 import math
 import sys
 from pathlib import Path
@@ -42,6 +43,7 @@ PAPER = "#1f3b57"     # cardstock colour (preview only; the cut files carry no c
 BACKDROP = "#f4f1ea"  # what you see through the holes in the preview (window, wall, envelope)
 
 TIP_STYLE = "leaf"   # rhombus | leaf | flame
+TIP_SCALE = 0.55      # leaf hole size as a fraction of the leaf (1 = hole fills the leaf, thin rim)
 CURL = 0.28           # sideways bend of each leaf (0 = symmetric)
 
 PRESETS = {
@@ -51,7 +53,7 @@ PRESETS = {
         hub=19.5, arm=10, minor_len=31.5, minor_w=6.5, minor_tip=9,
         branches=((29, 15, 4.8, 7.2), (37.5, 7, 4.3, 5.5)),
         twig_w=4, twig_tip=5,
-        fill=PAPER, preview_bg=BACKDROP, tip_style=TIP_STYLE, window_close=1.5, window_halo=0.0, min_window=2.0, stem_taper=0.62, ring_margin=3.0,
+        fill=PAPER, preview_bg=BACKDROP, tip_style=TIP_STYLE, tip_scale=TIP_SCALE, window_close=1.5, window_halo=0.0, min_window=2.0, stem_taper=0.62, ring_margin=3.0,
     ),
     "bold": dict(
         card=(127.0, 177.8), center=(63.5, 82.0), ring=54,
@@ -59,7 +61,7 @@ PRESETS = {
         hub=20, arm=12, minor_len=31.5, minor_w=7.5, minor_tip=10,
         branches=((29, 15, 6, 8), (38.5, 7, 5.5, 6.5)),
         twig_w=5, twig_tip=6,
-        fill=PAPER, preview_bg=BACKDROP, tip_style=TIP_STYLE, window_close=1.5, window_halo=0.0, min_window=2.0, stem_taper=0.62, ring_margin=3.0,
+        fill=PAPER, preview_bg=BACKDROP, tip_style=TIP_STYLE, tip_scale=TIP_SCALE, window_close=1.5, window_halo=0.0, min_window=2.0, stem_taper=0.62, ring_margin=3.0,
     ),
 }
 
@@ -185,13 +187,11 @@ def snowflake(p):
 # ------------------------------------------------------------------- text ----
 FONT = Path(__file__).parent / "fonts" / "Bungee-Regular.ttf"
 
-# (text, width of the line in mm, top y in mm) -- laid out under the round window
-TEXT_LINES = (
-    ("HAPPY HOLIDAYS", 98.0, 147.0),
-    ("LB | KC - 2026", 58.0, None),   # None: sits below the previous line
-)
-TEXT_LINE_GAP = 8.0      # mm between lines
-TEXT_TRACKING = 0.7      # extra mm between letters
+TEXT_FILE = Path(__file__).parent / "text.json"   # what to write, and how wide (edit that file)
+_text = json.loads(TEXT_FILE.read_text()) if TEXT_FILE.exists() else {"lines": []}
+TEXT_LINES = tuple((l["text"], l["width_mm"], l.get("top_mm")) for l in _text["lines"])
+TEXT_LINE_GAP = _text.get("line_gap_mm", 8.0)    # mm between lines
+TEXT_TRACKING = _text.get("tracking_mm", 0.7)    # extra mm between letters
 ENGRAVE = "#8a8a8a"      # engraving fill colour (grey) in the SVGs and previews
 
 
@@ -334,7 +334,10 @@ def build(p):
             if h.buffer(-p["min_feat"] / 2).is_empty:
                 continue
             holes.append(h.simplify(0.01))
-    holes += [t.buffer(-p["tip_inset"], join_style=1) for t in tips]
+    for t in tips:  # leaf hole = the leaf scaled down about its centre (keeps the leaf shape), never nearer than tip_inset to the edge
+        h = affinity.scale(t, p["tip_scale"], p["tip_scale"], origin=t.centroid).intersection(t.buffer(-p["tip_inset"], join_style=1))
+        if not h.is_empty and h.geom_type == "Polygon" and not h.buffer(-p["min_feat"] / 2).is_empty:
+            holes.append(h)
 
     holes = enforce_gap(holes, p)
     holes = widen_bridges(holes, ring, flake, p)

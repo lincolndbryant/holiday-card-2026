@@ -7,11 +7,12 @@ window and attached to the card at its five arm tips.
 ## Build
 
 ```sh
-pip install shapely            # once
-python3 generate.py            # all presets -> out/
-python3 generate.py bold       # one preset
-python3 generate.py --preview  # also render PNG previews (needs playwright)
+./build.sh                # first run creates .venv and installs dependencies, then builds all presets -> out/
+./build.sh bold           # one preset
+./build.sh --preview      # also render PNG previews (first run downloads Chromium, ~90 MB)
 ```
+
+Needs Python 3.9+. Edit the words in `text.json`, everything else in `generate.py`.
 
 ## Presets (edit `PRESETS` in generate.py)
 
@@ -26,8 +27,8 @@ Handy knobs: `TIP_STYLE` (`leaf`/`flame`/`rhombus`), `CURL` (leaf bend), `stem_t
 
 ## Lettering
 
-The greeting is **engraved**, not cut, in Bungee (`fonts/`, SIL OFL). Edit `TEXT_LINES` in `generate.py`
-(text, line width in mm, top y) and `ENGRAVE` for its colour; `pip install fonttools` is needed.
+The greeting is **engraved**, not cut, in Bungee (`fonts/`, SIL OFL). Edit `text.json`
+(the words, line width in mm, top y, spacing) and `ENGRAVE` for its colour; `pip install fonttools` is needed.
 
 ## Output files (`out/`)
 
