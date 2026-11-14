@@ -1,5 +1,7 @@
 # Penrose Snowflake card
 
+![Penrose snowflake card, bold preset](out/penrose-snowflake-5x7-bold-preview.svg)
+
 A laser-cut 5 × 7 in holiday card front: a five-fold snowflake (a symmetry real
 ice crystals never have) filled with a Penrose rhombus tiling, hung in a round
 window and attached to the card at its five arm tips.
