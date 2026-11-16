@@ -1,9 +1,19 @@
 {
-  "_help": "Lettering for the card front (engraved). Each line is centred; width_mm is the inked width of the line; top_mm is the y of the line's top edge from the top of the card, or null to place it just below the previous line. Delete all lines for no text.",
+  "_help": "Lettering for the card front (engraved). Each line is centred; width_mm is the inked width of the line; top_mm is the y of the line's top edge from the top of the card, or null to place it just below the previous line. Delete all lines for no text. font is a Fontsource name (npm package @fontsource/<font>); weight 400 unless the font offers others.",
+  "font": "bungee",
+  "weight": 400,
   "line_gap_mm": 8.0,
   "tracking_mm": 0.7,
   "lines": [
-    { "text": "HAPPY HOLIDAYS!", "width_mm": 98.0, "top_mm": 147.0 },
-    { "text": "LB / KC - 2026", "width_mm": 58.0, "top_mm": null }
+    {
+      "text": "HAPPY HOLIDAYS!",
+      "width_mm": 98.0,
+      "top_mm": 147.0
+    },
+    {
+      "text": "LB / KC - 2026",
+      "width_mm": 58.0,
+      "top_mm": null
+    }
   ]
 }

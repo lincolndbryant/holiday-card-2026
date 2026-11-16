@@ -1,0 +1,14 @@
+{
+  "name": "holiday-card-2026",
+  "private": true,
+  "description": "Fonts for the laser-cut holiday card lettering (Fontsource, SIL OFL)",
+  "dependencies": {
+    "@fontsource/alfa-slab-one": "^5.3.0",
+    "@fontsource/bowlby-one": "^5.3.0",
+    "@fontsource/bungee": "^5.3.0",
+    "@fontsource/dm-serif-display": "^5.3.0",
+    "@fontsource/fredoka": "^5.3.0",
+    "@fontsource/pacifico": "^5.3.0",
+    "@fontsource/righteous": "^5.3.0"
+  }
+}

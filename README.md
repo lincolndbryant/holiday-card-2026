@@ -12,7 +12,7 @@ window and attached to the card at its five arm tips.
 ./build.sh --preview      # also render PNG previews (first run downloads Chromium, ~90 MB)
 ```
 
-Needs Python 3.9+. Edit the words in `text.json`, everything else in `generate.py`.
+Needs Python 3.9+ and Node.js (for the fonts). Edit the words in `text.json`, everything else in `generate.py`.
 
 ## Presets (edit `PRESETS` in generate.py)
 
@@ -27,8 +27,14 @@ Handy knobs: `TIP_STYLE` (`leaf`/`flame`/`rhombus`), `CURL` (leaf bend), `stem_t
 
 ## Lettering
 
-The greeting is **engraved**, not cut, in Bungee (`fonts/`, SIL OFL). Edit `text.json`
-(the words, line width in mm, top y, spacing) and `ENGRAVE` for its colour; `pip install fonttools` is needed.
+The greeting is **engraved**, not cut. Edit `text.json` (the words, line width in mm, top y, spacing, and
+`font`). Fonts are [Fontsource](https://fontsource.org) packages from npm (SIL OFL); `./build.sh` runs
+`npm install` for you. To use another Google font, add `@fontsource/<name>` to `package.json` and set `"font": "<name>"`.
+
+```sh
+./build.sh --font=righteous       # whole build in one font -> out/fonts/righteous/
+./build.sh --font-test --preview  # bold card in every font in FONT_TEST -> out/fonts/<font>/
+```
 
 ## Output files (`out/`)
 

@@ -8,6 +8,8 @@ Usage:
     python3 generate.py            # build every preset into out/
     python3 generate.py bold       # build one preset
     python3 generate.py --preview  # also write PNG previews (needs playwright)
+    python3 generate.py --font=righteous         # whole build in one font -> out/fonts/righteous/
+    python3 generate.py --font-test --preview    # bold preset in several fonts -> out/fonts/<font>/
 
 Requires: shapely  (pip install shapely)
 All units are millimetres.
@@ -185,11 +187,29 @@ def snowflake(p):
 
 
 # ------------------------------------------------------------------- text ----
-FONT = Path(__file__).parent / "fonts" / "Bungee-Regular.ttf"
+FONTSOURCE = Path(__file__).parent / "node_modules" / "@fontsource"   # fonts come from `npm install`
+FONT_OVERRIDE = None   # set by --font=NAME[:WEIGHT]: use this font for every line
+# fonts rendered into out/fonts/<name>/ by --font-test: (fontsource name, weight)
+FONT_TEST = [("bungee", 400), ("alfa-slab-one", 400), ("righteous", 400), ("bowlby-one", 400),
+             ("dm-serif-display", 400), ("fredoka", 600), ("pacifico", 400)]
+_fonts = {}
+
+
+def load_font(name, weight=400):
+    from fontTools.ttLib import TTFont
+    if (name, weight) not in _fonts:
+        path = FONTSOURCE / name / "files" / f"{name}-latin-{weight}-normal.woff"
+        if not path.exists():
+            sys.exit(f"font '{name}' weight {weight} not found at {path}\n"
+                     f"run `npm install` (add it to package.json as @fontsource/{name} if it is new)")
+        _fonts[(name, weight)] = TTFont(str(path))
+    return _fonts[(name, weight)]
 
 TEXT_FILE = Path(__file__).parent / "text.json"   # what to write, and how wide (edit that file)
 _text = json.loads(TEXT_FILE.read_text()) if TEXT_FILE.exists() else {"lines": []}
-TEXT_LINES = tuple((l["text"], l["width_mm"], l.get("top_mm")) for l in _text["lines"])
+TEXT_LINES = tuple((l["text"], l["width_mm"], l.get("top_mm"),
+                   l.get("font", _text.get("font", "bungee")), l.get("weight", _text.get("weight", 400)))
+                  for l in _text["lines"])
 TEXT_LINE_GAP = _text.get("line_gap_mm", 8.0)    # mm between lines
 TEXT_TRACKING = _text.get("tracking_mm", 0.7)    # extra mm between letters
 ENGRAVE = "#8a8a8a"      # engraving fill colour (grey) in the SVGs and previews
@@ -235,11 +255,15 @@ def _glyph_polygons(font, name, flat=14):
 def text_engraving(card_w):
     """Engraved lettering as polygons (counters are interior rings), centred on the card,
     one entry of TEXT_LINES per line. Engraved, not cut, so nothing can fall out."""
-    from fontTools.ttLib import TTFont
-    font = TTFont(str(FONT))
-    cmap = font.getBestCmap()
     res, top = [], None
-    for text, width, y_top in TEXT_LINES:
+    for text, width, y_top, fname, weight in TEXT_LINES:
+        if FONT_OVERRIDE:
+            fname, weight = FONT_OVERRIDE
+        font = load_font(fname, weight)
+        cmap = font.getBestCmap()
+        missing = sorted({ch for ch in text if ord(ch) not in cmap})
+        if missing:
+            sys.exit(f"font '{fname}' has no glyph for {' '.join(missing)!r} (line: {text!r})")
         glyphs = [_glyph_polygons(font, cmap[ord(ch)]) for ch in text]
         # glyph advance in font units; scale k (mm per unit) chosen so the inked line is `width` mm wide
         units = sum(adv for _, adv in glyphs)
@@ -367,14 +391,15 @@ def d_rings(polys):
     return "".join(s)
 
 
-def write_svgs(name, p):
+def write_svgs(name, p, out=None):
+    out = out or OUT
     W, H = p["card"]
     holes, windows = build(p)
     hd, wd = d_attr(holes), d_attr(windows)
     ed = d_rings(text_engraving(W)) if TEXT_LINES else ""
     eng = f'<path id="engraving" fill="{ENGRAVE}" fill-rule="evenodd" stroke="none" d="{ed}"/>' if ed else ""
     size = f'width="{W:g}mm" height="{H:g}mm" viewBox="0 0 {W:g} {H:g}"'
-    OUT.mkdir(exist_ok=True)
+    out.mkdir(parents=True, exist_ok=True)
 
     cut = f'''<?xml version="1.0" encoding="UTF-8"?>
 <!-- Penrose Snowflake ({name}) - {W:g} x {H:g} mm. Grey fill = engrave (first), Red = inner cuts, Blue = outline (cut last). -->
@@ -405,9 +430,9 @@ def write_svgs(name, p):
     stem = f"penrose-snowflake-{W/25.4:g}x{H/25.4:g}-{name}"
     files = {f"{stem}-cutlines.svg": cut, f"{stem}-filled.svg": filled, f"{stem}-preview.svg": preview}
     for fn, txt in files.items():
-        (OUT / fn).write_text(txt)
-    print(f"{name}: {len(holes)} holes, {len(windows)} window pieces -> out/{stem}-*.svg")
-    return [OUT / fn for fn in files]
+        (out / fn).write_text(txt)
+    print(f"{name}: {len(holes)} holes, {len(windows)} window pieces -> {out.relative_to(OUT.parent)}/{stem}-*.svg")
+    return [out / fn for fn in files]
 
 
 def render_previews(paths):
@@ -423,10 +448,23 @@ def render_previews(paths):
 
 
 if __name__ == "__main__":
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    names = args or list(PRESETS)
+    flags = [a for a in sys.argv[1:] if a.startswith("--")]
+    names = [a for a in sys.argv[1:] if not a.startswith("--")] or list(PRESETS)
+    font_flag = next((f.split("=", 1)[1] for f in flags if f.startswith("--font=")), None)
     written = []
-    for n in names:
-        written += write_svgs(n, PRESETS[n])
-    if "--preview" in sys.argv:
+    if "--font-test" in flags:      # the same card in several fonts, one folder each, bold preset only
+        names = [a for a in sys.argv[1:] if not a.startswith("--")] or ["bold"]
+        for fname, weight in FONT_TEST:
+            FONT_OVERRIDE = (fname, weight)
+            for n in names:
+                written += write_svgs(n, PRESETS[n], OUT / "fonts" / fname)
+    else:
+        out = OUT
+        if font_flag:               # --font=NAME[:WEIGHT]: whole build in that font, into out/fonts/NAME/
+            fname, _, weight = font_flag.partition(":")
+            FONT_OVERRIDE = (fname, int(weight or 400))
+            out = OUT / "fonts" / fname
+        for n in names:
+            written += write_svgs(n, PRESETS[n], out)
+    if "--preview" in flags:
         render_previews(written)
