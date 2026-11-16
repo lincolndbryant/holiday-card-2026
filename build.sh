@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# One-step setup + build.
-#   ./build.sh                 build every preset into out/
-#   ./build.sh bold            build one preset
+# One-step setup + build. Builds the card AND the hangable ornament by default.
+#   ./build.sh                 card -> out/   and   ornament -> out/ornament/   (all presets)
+#   ./build.sh bold            one preset of each
 #   ./build.sh --preview       also render PNG previews (installs playwright + Chromium on first use)
-#   ./build.sh --font-test --preview   the bold card in several fonts -> out/fonts/<font>/
-#   ./build.sh --font=righteous        the whole build in one font -> out/fonts/righteous/
+#   ./build.sh --card          card only          ./build.sh --ornament   ornament only
+#   ./build.sh --font-test --preview   the bold card in several fonts -> out/fonts/<font>/   (card only)
+#   ./build.sh --font=righteous        the whole card in one font -> out/fonts/righteous/    (card only)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -20,4 +21,16 @@ case " $* " in
     ;;
 esac
 
-.venv/bin/python generate.py "$@"
+mode=both; args=()
+for a in "$@"; do
+  case "$a" in
+    --card)                   mode=card ;;
+    --ornament)               mode=ornament ;;
+    --font=*|--font-test)     mode=card; args+=("$a") ;;   # font options apply to the card only
+    *)                        args+=("$a") ;;
+  esac
+done
+
+[ "$mode" != ornament ] && .venv/bin/python generate.py ${args[@]+"${args[@]}"}
+[ "$mode" != card ]     && .venv/bin/python generate_ornament.py ${args[@]+"${args[@]}"}
+exit 0

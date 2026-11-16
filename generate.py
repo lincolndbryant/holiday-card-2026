@@ -46,6 +46,13 @@ BACKDROP = "#f4f1ea"  # what you see through the holes in the preview (window, w
 
 TIP_STYLE = "leaf"   # rhombus | leaf | flame
 TIP_SCALE = 0.55      # leaf hole size as a fraction of the leaf (1 = hole fills the leaf, thin rim)
+FLAME_CURL = 0.7      # how far the flame's tip curls sideways (0 = straight teardrop, negative = other way)
+FLAME_WIDTH = 0.42    # flame width as a fraction of the main arm's width
+FLAME_CLEAR = 2.5     # mm of paper between the flame and the lace before it
+FLAME_END = 5.0       # mm the flame stops short of the window edge
+FLAME_RIM = 2.2       # mm of paper kept between the flame and the arm's edge
+FLAME_GAP = 2.0       # mm of paper kept between a flame and any other hole
+FLAME_TIP = 1.6       # flame tips narrower than this are rounded off (mm)
 CURL = 0.28           # sideways bend of each leaf (0 = symmetric)
 
 PRESETS = {
@@ -140,6 +147,22 @@ def tip(base, th, e, style="rhombus", curl=0.0):
     return Polygon([xy(p) for p in pts])
 
 
+def flame(base, th, length, width, curl):
+    """Comma / candle-flame shape: round belly near base, tapering to a point that curls sideways
+    (like half of a yin-yang). Same curl sign on every arm gives 5-fold rotational symmetry."""
+    u = cmath.rect(1, th)
+    n = 40
+    side = []
+    for i in range(n + 1):
+        t = i / n
+        hw = (width / 2) * math.sin(math.pi * t ** 0.6) ** 0.9
+        c = curl * width * 0.9 * t ** 2.2
+        side.append((t * length, c, hw))
+    pts = [base + u * x + u * 1j * (c + w) for x, c, w in side]
+    pts += [base + u * x + u * 1j * (c - w) for x, c, w in reversed(side[1:-1])]
+    return Polygon([xy(q) for q in pts])
+
+
 def bar(a, b, w):
     return LineString([xy(a), xy(b)]).buffer(w / 2, cap_style=2)
 
@@ -193,6 +216,37 @@ FONT_OVERRIDE = None   # set by --font=NAME[:WEIGHT]: use this font for every li
 FONT_TEST = [("bungee", 400), ("alfa-slab-one", 400), ("righteous", 400), ("bowlby-one", 400),
              ("dm-serif-display", 400), ("fredoka", 600), ("pacifico", 400)]
 _fonts = {}
+
+
+# characters the main font lacks (hearts, snowflakes, ...) are looked up in these, in order
+FALLBACK_FONTS = [("noto-emoji", 400)]
+EMOJI_SOLID = True     # fill emoji outlines solid (a hatched outline would engrave as hairlines)
+EMOJI_SCALE = 0.85     # emoji outlines are drawn a little smaller than the em so they sit with capitals
+
+
+def _fallback_fonts():
+    """All Fontsource subset files of the fallback fonts (Noto Emoji is split into numbered subsets)."""
+    from fontTools.ttLib import TTFont
+    if "fallback" not in _fonts:
+        fonts = []
+        for name, weight in FALLBACK_FONTS:
+            for path in sorted((FONTSOURCE / name / "files").glob(f"{name}-*-{weight}-normal.woff")):
+                fonts.append(TTFont(str(path)))
+        _fonts["fallback"] = fonts
+    return _fonts["fallback"]
+
+
+def _fallback_glyph(ch, upm):
+    """(outline, advance) for ch from a fallback font, scaled to the main font's units; None if absent."""
+    for f in _fallback_fonts():
+        cmap = f.getBestCmap()
+        if ord(ch) in cmap:
+            geom, adv = _glyph_polygons(f, cmap[ord(ch)])
+            sc = upm / f["head"].unitsPerEm * EMOJI_SCALE
+            if EMOJI_SOLID:  # the monochrome emoji are outlines with hatching; fill them in as a solid silhouette
+                geom = unary_union([Polygon(q.exterior) for q in getattr(geom, "geoms", [geom])])
+            return affinity.scale(geom, sc, sc, origin=(0, 0)), adv * sc
+    return None
 
 
 def load_font(name, weight=400):
@@ -261,14 +315,20 @@ def text_engraving(card_w):
             fname, weight = FONT_OVERRIDE
         font = load_font(fname, weight)
         cmap = font.getBestCmap()
-        missing = sorted({ch for ch in text if ord(ch) not in cmap})
-        if missing:
-            sys.exit(f"font '{fname}' has no glyph for {' '.join(missing)!r} (line: {text!r})")
-        glyphs = [_glyph_polygons(font, cmap[ord(ch)]) for ch in text]
+        upm = font["head"].unitsPerEm
+        glyphs = []
+        for ch in text.replace("\ufe0f", ""):          # drop emoji variation selectors
+            if ord(ch) in cmap:
+                glyphs.append(_glyph_polygons(font, cmap[ord(ch)]))
+            else:
+                hit = _fallback_glyph(ch, upm)
+                if hit is None:
+                    sys.exit(f"no glyph for {ch!r} in '{fname}' or the fallback fonts (line: {text!r})")
+                glyphs.append(hit)
         # glyph advance in font units; scale k (mm per unit) chosen so the inked line is `width` mm wide
         units = sum(adv for _, adv in glyphs)
         ink_units = units - glyphs[0][0].bounds[0] - (glyphs[-1][1] - glyphs[-1][0].bounds[2])
-        k = (width - TEXT_TRACKING * (len(text) - 1)) / ink_units
+        k = (width - TEXT_TRACKING * (len(glyphs) - 1)) / ink_units
         x, line = 0.0, []
         for g, adv in glyphs:
             if not g.is_empty:
@@ -315,6 +375,39 @@ def window_region(ring, flake, p):
     return [q for q in getattr(w, "geoms", [w]) if q.area > 15]  # tiny slivers stay solid
 
 
+def arm_span(p, holes, k):
+    """Free stretch of main arm k (0 = pointing up): (direction angle, unit vector, arm corridor, r0, r1),
+    from just past the last lace hole in that arm to just short of the window edge. Snowflake frame."""
+    th = -math.pi / 2 + k * 2 * math.pi / 5
+    u = cmath.rect(1, th)
+    corridor = LineString([xy(0), xy(u * (p["ring"] + 4))]).buffer(p["arm"] / 2, cap_style=2)
+    reach = [max((q[0] * u.real + q[1] * u.imag) for q in h.exterior.coords)
+             for h in holes if len(h.exterior.coords) <= 6 and corridor.contains(h.centroid)]  # rhombus lace only, not leaf holes
+    r0 = max(reach, default=p["hub"]) + FLAME_CLEAR       # start past the last lace hole in this arm
+    r1 = p["ring"] - FLAME_END                            # stop short of the window edge
+    return th, u, corridor, r0, r1
+
+
+def arm_flames(p, flake, holes, skip=()):
+    """One flame hole in the plain stretch of each main arm, between the hub lace and the window.
+    Arms listed in `skip` get none (the ornament uses its top arm for lettering)."""
+    out = []
+    for k in range(5):
+        if k in skip:
+            continue
+        th, u, corridor, r0, r1 = arm_span(p, holes, k)
+        if r1 - r0 < 6:
+            continue
+        f = flame(u * r0, th, r1 - r0, p["arm"] * FLAME_WIDTH, FLAME_CURL)
+        f = f.intersection(corridor.buffer(-FLAME_RIM, join_style=1))      # stay inside the arm, with a paper rim
+        f = f.buffer(-FLAME_TIP / 2, join_style=1).buffer(FLAME_TIP / 2, join_style=1)  # no hairline tip
+        f = f.difference(unary_union(holes).buffer(FLAME_GAP, join_style=1))
+        parts = [q for q in getattr(f, "geoms", [f]) if q.geom_type == "Polygon"]
+        if parts and max(q.area for q in parts) > 6:
+            out.append(max(parts, key=lambda q: q.area))
+    return out
+
+
 def widen_bridges(holes, ring, flake, p, max_iter=20):
     """Fill holes beside any neck narrower than p['min_bridge'] so no paper hangs by a thread.
     Works in the snowflake's own frame (centre at the origin)."""
@@ -338,7 +431,7 @@ def widen_bridges(holes, ring, flake, p, max_iter=20):
     return holes
 
 
-def build(p):
+def build(p, skip_flames=()):
     flake, tips = snowflake(p)
     ring = Point(0, 0).buffer(p["ring"], resolution=128)
     tipu = unary_union(tips)
@@ -364,6 +457,7 @@ def build(p):
             holes.append(h)
 
     holes = enforce_gap(holes, p)
+    holes += arm_flames(p, flake, holes, skip_flames)
     holes = widen_bridges(holes, ring, flake, p)
 
     windows = window_region(ring, flake, p)

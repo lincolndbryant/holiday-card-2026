@@ -1,6 +1,6 @@
 {
   "_help": "Lettering for the card front (engraved). Each line is centred; width_mm is the inked width of the line; top_mm is the y of the line's top edge from the top of the card, or null to place it just below the previous line. Delete all lines for no text. font is a Fontsource name (npm package @fontsource/<font>); weight 400 unless the font offers others.",
-  "font": "bungee",
+  "font": "righteous",
   "weight": 400,
   "line_gap_mm": 8.0,
   "tracking_mm": 0.7,
@@ -11,7 +11,7 @@
       "top_mm": 147.0
     },
     {
-      "text": "LB / KC - 2026",
+      "text": "LB / KC ❤ 2026",
       "width_mm": 58.0,
       "top_mm": null
     }
